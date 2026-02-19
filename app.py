@@ -9,6 +9,7 @@ from ui.forms import (
     render_dependencies,
     render_impacts,
     render_organization,
+    render_prioritization,
     render_processes,
     render_review_export,
     render_welcome,
@@ -45,6 +46,8 @@ with col1:
         render_dependencies(project)
     elif step == "Impacts":
         render_impacts(project)
+    elif step == "Prioritization":
+        render_prioritization(project)
     elif step == "Review/Export":
         render_review_export(project)
 

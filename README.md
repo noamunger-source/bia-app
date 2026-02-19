@@ -1,6 +1,6 @@
 # BIA App (Streamlit)
 
-A minimal Streamlit application for a guided Business Impact Analysis (BIA) workflow.
+A minimal Streamlit application for a guided Business Impact Analysis (BIA) workflow, including a product prioritization step using a simplified fuzzy BWM-TOPSIS pipeline.
 
 ## Steps
 
@@ -9,6 +9,7 @@ A minimal Streamlit application for a guided Business Impact Analysis (BIA) work
 - Processes
 - Dependencies
 - Impacts
+- Prioritization (Fuzzy BWM-TOPSIS)
 - Review / Export
 
 ## Run locally
