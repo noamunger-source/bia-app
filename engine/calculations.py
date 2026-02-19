@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from math import sqrt
 
-from engine.models import BIAProject, DecisionMatrix, Impact, TriangularFuzzyNumber
+from engine.models import (
+    BIAProject,
+    ContinuityParams,
+    DecisionMatrix,
+    FactorWeights,
+    Impact,
+    ImpactInputs,
+    LikelihoodInputs,
+    RiskScore,
+    TriangularFuzzyNumber,
+)
 
 
 # --- Existing BIA placeholders ---
@@ -14,7 +24,6 @@ def calculate_process_priority(impact: Impact) -> float:
 
 def summarize_risk(project: BIAProject) -> dict:
     """Generate simple aggregate metrics used by Review step."""
-    # TODO: Add richer analytics (RTO/RPO, dependency-adjusted impact, scenarios).
     if not project.impacts:
         return {"process_count": len(project.processes), "average_score": 0.0}
 
@@ -32,32 +41,98 @@ def fuzzy_add(a: TriangularFuzzyNumber, b: TriangularFuzzyNumber) -> TriangularF
 
 
 def fuzzy_multiply(a: TriangularFuzzyNumber, b: TriangularFuzzyNumber) -> TriangularFuzzyNumber:
-    # Assumes non-negative TFNs for simplified product prioritization.
     return TriangularFuzzyNumber(a.lower * b.lower, a.middle * b.middle, a.upper * b.upper)
 
 
+def fuzzy_scale(a: TriangularFuzzyNumber, scalar: float) -> TriangularFuzzyNumber:
+    return TriangularFuzzyNumber(a.lower * scalar, a.middle * scalar, a.upper * scalar)
+
+
 def defuzzify(a: TriangularFuzzyNumber) -> float:
-    """Centroid defuzzification."""
     return (a.lower + a.middle + a.upper) / 3.0
 
 
+def weighted_defuzzification(a: TriangularFuzzyNumber, weights: tuple[float, float, float] = (0.25, 0.5, 0.25)) -> float:
+    wl, wm, wu = weights
+    return (a.lower * wl) + (a.middle * wm) + (a.upper * wu)
+
+
 def fuzzy_distance(a: TriangularFuzzyNumber, b: TriangularFuzzyNumber) -> float:
-    """Vertex distance between two TFNs."""
     return sqrt(((a.lower - b.lower) ** 2 + (a.middle - b.middle) ** 2 + (a.upper - b.upper) ** 2) / 3.0)
+
+
+# --- PARAM (Physical Asset Criticality) ---
+def compute_daf(dpf: TriangularFuzzyNumber, ddf: TriangularFuzzyNumber) -> TriangularFuzzyNumber:
+    """DaF = DPF ⊗ DDF"""
+    return fuzzy_multiply(dpf, ddf)
+
+
+def aggregate_likelihood(inputs: LikelihoodInputs, weights: FactorWeights) -> TriangularFuzzyNumber:
+    """Likelihood aggregation equation using weighted DaF, UCF, DeF."""
+    daf = compute_daf(inputs.dpf, inputs.ddf)
+    lw = weights.likelihood
+    return fuzzy_add(
+        fuzzy_add(fuzzy_scale(daf, lw.get("daf", 0.0)), fuzzy_scale(inputs.ucf, lw.get("ucf", 0.0))),
+        fuzzy_scale(inputs.def_, lw.get("def", 0.0)),
+    )
+
+
+def aggregate_impact(inputs: ImpactInputs, weights: FactorWeights) -> TriangularFuzzyNumber:
+    """Impact aggregation equation using weighted SF, PF, RC, LS."""
+    iw = weights.impact
+    return fuzzy_add(
+        fuzzy_add(
+            fuzzy_scale(inputs.sf, iw.get("sf", 0.0)),
+            fuzzy_scale(inputs.pf, iw.get("pf", 0.0)),
+        ),
+        fuzzy_add(
+            fuzzy_scale(inputs.rc, iw.get("rc", 0.0)),
+            fuzzy_scale(inputs.ls, iw.get("ls", 0.0)),
+        ),
+    )
+
+
+def classify_critical_asset(risk_value: float, continuity: ContinuityParams) -> bool:
+    return risk_value >= continuity.criticality_threshold
+
+
+def compute_param_scores(project: BIAProject) -> list[RiskScore]:
+    scores: list[RiskScore] = []
+    raw = []
+
+    for asset in project.assets:
+        lin = project.likelihood_inputs.get(asset.name, LikelihoodInputs())
+        iin = project.impact_inputs.get(asset.name, ImpactInputs())
+
+        likelihood_f = aggregate_likelihood(lin, project.factor_weights)
+        impact_f = aggregate_impact(iin, project.factor_weights)
+
+        likelihood = weighted_defuzzification(likelihood_f)
+        impact = weighted_defuzzification(impact_f)
+        risk_value = likelihood * impact
+
+        raw.append(risk_value)
+        scores.append(
+            RiskScore(
+                asset_name=asset.name,
+                likelihood=likelihood,
+                impact=impact,
+                risk_value=risk_value,
+                critical=classify_critical_asset(risk_value, project.continuity_params),
+                wpa=0.0,
+            )
+        )
+
+    denom = sum(raw) if raw else 0.0
+    for s in scores:
+        s.wpa = s.risk_value / denom if denom > 0 else 0.0
+
+    project.risk_scores = scores
+    return scores
 
 
 # --- Fuzzy BWM placeholder ---
 def calculate_fuzzy_bwm_weights(best_to_others: list[TriangularFuzzyNumber]) -> list[float]:
-    """
-    Simplified structured placeholder for fuzzy BWM-derived weights.
-
-    Args:
-        best_to_others: Pairwise fuzzy preferences from best criterion to each criterion.
-
-    Returns:
-        Normalized crisp weights.
-    """
-    # TODO: Replace with full optimization-based fuzzy BWM solver.
     if not best_to_others:
         return []
 

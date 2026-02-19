@@ -6,6 +6,8 @@ from engine.models import BIAProject
 from engine.storage import load_project, save_project
 from ui.forms import (
     STEPS,
+    render_asset_risk_param,
+    render_assets,
     render_dependencies,
     render_impacts,
     render_organization,
@@ -14,7 +16,6 @@ from ui.forms import (
     render_review_export,
     render_welcome,
 )
-
 
 st.set_page_config(page_title="BIA Wizard", layout="wide")
 
@@ -46,6 +47,10 @@ with col1:
         render_dependencies(project)
     elif step == "Impacts":
         render_impacts(project)
+    elif step == "Assets":
+        render_assets(project)
+    elif step == "Asset Risk (PARAM)":
+        render_asset_risk_param(project)
     elif step == "Prioritization":
         render_prioritization(project)
     elif step == "Review/Export":
